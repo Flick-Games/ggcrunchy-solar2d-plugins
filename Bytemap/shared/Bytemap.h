@@ -42,12 +42,14 @@
 struct Bytemap
 {
 	std::vector<unsigned char> mBytes{};// Normal data (or temporary, when using unsuitable bytemaps)
+	std::vector<unsigned char> mSource{};// Reloadable: encoded image (e.g. PNG), decoded on request in place of keeping the pixels
 	CoronaExternalBitmapFormat mFormat;	// Public format
 	lua_State * mL;	// Used to look up bytemap when submitting pixels
 	int mBlobRef{LUA_NOREF};// If a blob is installed, its lookup reference
 	int mDummyRef{LUA_NOREF};	// Lazy dummy blob, used to effect deallocation
 	int mW, mH;	// Bytemap dimensions
 	bool mTemp{false};	// Using `mBytes` in temporary manner?
+	bool mPremultiply{false};	// Reloadable: premultiply alpha on decode, as the original load did
 
 	Bytemap (lua_State * L, int w, int h, CoronaExternalBitmapFormat format, CoronaExternalBitmapFormat rep_format = kExternalBitmapFormat_Undefined);
 	~Bytemap (void);
@@ -68,6 +70,11 @@ struct Bytemap
 	void PushBlob (void);
 	void ResolveMemory (void);
 
+	bool HasSource (void) const { return !mSource.empty(); }
+	bool Reload (void);
+	void DropSource (bool bKeepPixels = true);
+
+	static void FreeBytes (std::vector<unsigned char> & bytes);
 	static void PremultiplyAlpha (uint32_t * pixel, int len);
 };
 

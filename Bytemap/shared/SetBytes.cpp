@@ -166,6 +166,9 @@ int Bytemap_SetBytes (lua_State * L)
 
 	if (bmap)
 	{
+		// Reloadable: the edit must survive the next upload, so keep the pixels from now on.
+		bmap->DropSource();
+
 		// If a blob is present, flatten it into normal memory (detaching it). Skip this step
 		// when the temporary flag is set, in which case the blob is passed in as the bytes. 
 		if (bmap->mBlobRef != LUA_NOREF && !bmap->mTemp && !bmap->Flatten(true)) return LuaXS::ErrorAfterNil(L);// bmap, bytes, ...[, error]

@@ -142,8 +142,66 @@ void Bytemap::InitializeBytes (std::vector<unsigned char> * bytes)
 	else mBytes.swap(*bytes);
 }
 
+// Number of times reloadable bytemaps have decoded their source again (see Reload())
+static unsigned int sReloadCount = 0U;
+
+void Bytemap::FreeBytes (std::vector<unsigned char> & bytes)
+{
+	// clear() keeps the capacity, so swap with an empty vector to actually return the memory
+	std::vector<unsigned char>().swap(bytes);
+}
+
+bool Bytemap::Reload (void)
+{
+	int w = 0, h = 0, comp = 0;
+	unsigned char * uc = stbi_load_from_memory(mSource.data(), int(mSource.size()), &w, &h, &comp, 4);
+
+	if (!uc) return false;
+
+	bool bOK = w == mW && h == mH;
+
+	if (bOK)
+	{
+		size_t size = size_t(w) * size_t(h) * 4U;
+
+		if (mPremultiply) PremultiplyAlpha(reinterpret_cast<uint32_t *>(uc), int(size / 4U));
+
+		mBytes.assign(uc, uc + size);
+
+		++sReloadCount;
+	}
+
+	STBI_FREE(uc);
+
+	return bOK;
+}
+
+void Bytemap::DropSource (bool bKeepPixels)
+{
+	if (!HasSource()) return;
+
+	// The pixels become permanent, e.g. because SetBytes() is about to edit them
+	if (bKeepPixels && mBytes.empty() && !Reload()) InitializeBytes();
+
+	mTemp = false;
+
+	FreeBytes(mSource);
+}
+
 void Bytemap::CheckSufficientMemory (void)
 {
+	// Reloadable: decode the pixels when an earlier upload freed them; ResolveMemory() frees
+	// them again once the caller (an upload or GetBytes()) is done. A failed decode gives
+	// transparent pixels rather than garbage.
+	if (HasSource())
+	{
+		if (mBytes.empty() && !Reload()) InitializeBytes();
+
+		mTemp = true;
+
+		return;
+	}
+
 	if (mBlobRef == LUA_NOREF) return;
 
 	PushBlob();	// ..., blob
@@ -166,7 +224,7 @@ void Bytemap::PushBlob (void)
 
 void Bytemap::ResolveMemory (void)
 {
-	if (mTemp) mBytes.clear();
+	if (mTemp) FreeBytes(mBytes);
 
 	mTemp = false;
 }
@@ -212,6 +270,8 @@ static int Premultiply (lua_State * L)
 
 	if (bmap && kExternalBitmapFormat_RGBA == bmap->mFormat)
 	{
+		bmap->DropSource();	// the edit must survive the next upload
+
 		// If a blob is present, flatten it into normal memory (detaching it).
 		if (bmap->mBlobRef != LUA_NOREF && !bmap->Flatten(true)) return LuaXS::ErrorAfterNil(L);// bmap[, error]
 
@@ -340,7 +400,10 @@ static CoronaExternalBitmapFormat ResolveFormat (int w, int h, CoronaExternalBit
 	else return kExternalBitmapFormat_Undefined;
 }
 
-static bool NewBytemap (lua_State * L, int w, int h, CoronaExternalBitmapFormat format, std::vector<unsigned char> * bytes = nullptr)
+// external_out (optional) receives the new bytemap when it is an external texture. Looking it up
+// from the stack afterwards does not work: CoronaExternalGetUserData() reads stack index 1,
+// whatever index it is given.
+static bool NewBytemap (lua_State * L, int w, int h, CoronaExternalBitmapFormat format, std::vector<unsigned char> * bytes = nullptr, Bytemap ** external_out = nullptr)
 {
 	lua_getfield(L, 1, "is_non_external");	// ..., is_non_external
 
@@ -359,7 +422,11 @@ static bool NewBytemap (lua_State * L, int w, int h, CoronaExternalBitmapFormat 
 
 			bmap->InitializeBytes(bytes);
 
-			return AttachCallbacks(L, bmap);	// params[, bmap]
+			if (!AttachCallbacks(L, bmap)) return false;	// params[, bmap]
+
+			if (external_out) *external_out = bmap;
+
+			return true;
 		}
 
 		else return false;
@@ -595,6 +662,12 @@ CORONA_EXPORT int luaopen_plugin_Bytemap (lua_State * L)
 		bool bNoPremultipliedAlpha = lua_toboolean(L, -1) != 0;
 
 		lua_pop(L, 1);	// params, dirs, format?
+		lua_getfield(L, 1, "reloadable");	// params, dirs, format?, reloadable
+
+		// Reloadable (RGBA only): keep the encoded image and free the pixels after each upload
+		bool bReloadable = lua_toboolean(L, -1) != 0 && kExternalBitmapFormat_RGBA == format;
+
+		lua_pop(L, 1);	// params, dirs, format?
 		lua_getfield(L, 1, "from_memory"); // params, dirs, format?, from_memory?
 
 		if (lua_isstring(L, -1))
@@ -613,7 +686,7 @@ CORONA_EXPORT int luaopen_plugin_Bytemap (lua_State * L)
 			luaL_argcheck(L, lua_isstring(L, -2), -2, "Expected filename");
 		}
 
-        return LuaXS::ResultOrNil(L, dirs->WithFileContentsDo(L, -2, -3, [L, format, bNoPremultipliedAlpha](ByteReader & bytes) {
+        return LuaXS::ResultOrNil(L, dirs->WithFileContentsDo(L, -2, -3, [L, format, bNoPremultipliedAlpha, bReloadable](ByteReader & bytes) {
             int w, h, comp, ncomps = 4;
 
             if (kExternalBitmapFormat_Mask == format) ncomps = 1;
@@ -624,7 +697,9 @@ CORONA_EXPORT int luaopen_plugin_Bytemap (lua_State * L)
 
             if (used_stb)
             {
-                bOK = NewBytemap(L, w, h, format);	// params, dirs, format?, is_absolute, filename[, bmap]
+                Bytemap * reloadable = nullptr;
+
+                bOK = NewBytemap(L, w, h, format, nullptr, bReloadable ? &reloadable : nullptr);	// params, dirs, format?, is_absolute, filename[, bmap]
 
                 if (bOK)
                 {
@@ -639,7 +714,29 @@ CORONA_EXPORT int luaopen_plugin_Bytemap (lua_State * L)
 
 					if (4 == ncomps && !bNoPremultipliedAlpha) Bytemap::PremultiplyAlpha(reinterpret_cast<uint32_t *>(uc), proxy->mSize / 4);
 
-                    lua_pcall(L, 2, 0, 0);	// params, dirs, format?, is_absolute, filename, bmap
+                    if (lua_pcall(L, 2, 0, 0) != 0)	// params, dirs, format?, is_absolute, filename, bmap[, err]
+                    {
+                        // The texture is never returned, so release it here or nothing ever will
+                        lua_getfield(L, -2, "releaseSelf");	// params, dirs, format?, is_absolute, filename, bmap, err, releaseSelf
+                        lua_pushvalue(L, -3);	// params, dirs, format?, is_absolute, filename, bmap, err, releaseSelf, bmap
+
+                        if (lua_pcall(L, 1, 0, 0) != 0) lua_pop(L, 1);	// params, dirs, format?, is_absolute, filename, bmap, err
+
+                        lua_pop(L, 1);	// params, dirs, format?, is_absolute, filename, bmap
+
+                        bOK = false;	// previously the error message was returned as the texture
+                    }
+
+                    // Keep the encoded image and let the first upload free the pixels; later
+                    // uploads (e.g. after a lost graphics context) decode it again
+                    else if (reloadable)
+                    {
+                        const unsigned char * source = static_cast<const unsigned char *>(bytes.mBytes);
+
+                        reloadable->mSource.assign(source, source + bytes.mCount);
+                        reloadable->mPremultiply = !bNoPremultipliedAlpha;
+                        reloadable->mTemp = true;
+                    }
                 }
             }
 
@@ -691,6 +788,12 @@ CORONA_EXPORT int luaopen_plugin_Bytemap (lua_State * L)
         }));// params, format?, is_absolute, filename, bmap / nil
 	}, 3);	// bytemap, loadTexture
 	lua_setfield(L, -2, "loadTexture");	// bytemap = { newTexture, addLoader, loadTexture = loadTexture }
+	lua_pushcfunction(L, [](lua_State * L) {
+		lua_pushinteger(L, lua_Integer(sReloadCount));	// count
+
+		return 1;
+	});	// bytemap, getReloadCount
+	lua_setfield(L, -2, "getReloadCount");	// bytemap = { newTexture, addLoader, loadTexture, getReloadCount = getReloadCount }
 
 	return 1;
 }
