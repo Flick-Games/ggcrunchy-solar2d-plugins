@@ -11,13 +11,13 @@ CONFIG=Release
 DEVICE_TYPE=all
 BUILD_TYPE=clean
 
-if [ $OS == Windows_NT ]
+if [ "$OS" == "Windows_NT" ]
 then
 	ANDROID_NDK="D:/android-ndk-r21b"
 	LIBS_SRC_DIR="$CORONA_ROOT/Corona/android/lib/gradle/Corona.aar"
 	CMD="cmd //c "
 else
-    ANDROID_NDK="$HOME/Library/Android/sdk/ndk/24.0.8215888"
+    ANDROID_NDK="${ANDROID_NDK:-$HOME/Library/Android/sdk/ndk/28.2.13676358}"
     LIBS_SRC_DIR="/Applications/Native/Corona/android/lib/gradle/Corona.aar"
 	CMD=
 fi
@@ -105,5 +105,5 @@ echo Done.
 echo $path/jniLibs/armeabi-v7a/libplugin.$TARGET_NAME.so
 
 echo Packing binaries...
-tar -czvf data.tgz -C $path jniLibs -C $path/jniLibs/armeabi-v7a libplugin.$TARGET_NAME.so
+tar -czvf data.tgz -C $path jniLibs metadata.lua -C $path/jniLibs/armeabi-v7a libplugin.$TARGET_NAME.so
 echo $path/data.tgz.

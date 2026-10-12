@@ -58,6 +58,9 @@ LOCAL_CFLAGS := \
 
 LOCAL_LDLIBS := -llog -landroid
 
+# 16 KB page alignment (required by Google Play for Android 15+ devices)
+LOCAL_LDFLAGS += -Wl,-z,max-page-size=16384
+
 # LOCAL_CFLAGS += -fopenmp
 # LOCAL_LDFLAGS += -fopenmp
 
