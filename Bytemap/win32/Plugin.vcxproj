@@ -79,7 +79,7 @@
       <AdditionalDependencies>$(CORONA_ROOT)/Corona/win/lib/*.lib;$(Configuration)\solar2d_native_utils.lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>set PLUGIN_DIR=$(appdata)\Solar2DPlugins\com.xibalbastudios\plugin.$(TargetName)\win32-sim
+      <Command>set PLUGIN_DIR=$(appdata)\Solar2DPlugins\games.flick\plugin.$(TargetName)\win32-sim
 setlocal enableextensions
 mkdir %PLUGIN_DIR%
 set FILENAME=plugin_$(TargetName).dll

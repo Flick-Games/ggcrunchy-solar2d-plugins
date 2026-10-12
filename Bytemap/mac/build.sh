@@ -41,15 +41,25 @@ echo "OUTPUT_DIR: $OUTPUT_DIR"
 xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG clean
 checkError
 
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG
+# Flick: universal (Apple silicon + Intel), macOS 12 to match Solar2D, built into the project's build folder
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO MACOSX_DEPLOYMENT_TARGET=12.0 SYMROOT="$path/build"
 checkError
 
-PLUGINS_DIR=~/Solar2DPlugins/com.xibalbastudios/plugin.$TARGET_NAME/mac-sim
+# Flick: install as games.flick, never over the stock com.xibalbastudios plugin
+PLUGINS_DIR=~/Solar2DPlugins/games.flick/plugin.$TARGET_NAME/mac-sim
 
 mkdir -p "$PLUGINS_DIR"
 
 cp "$path/build/$CONFIG/$TARGET_NAME.$OUTPUT_SUFFIX" "$OUTPUT_DIR/plugin_$TARGET_NAME.$OUTPUT_SUFFIX"
+checkError
 
-tar -czf "data.tgz" "./plugin_$TARGET_NAME.$OUTPUT_SUFFIX"
+# Flick: arm64 dylibs must be signed to load; ad-hoc is enough for the simulator
+codesign -s - -f "$OUTPUT_DIR/plugin_$TARGET_NAME.$OUTPUT_SUFFIX"
+checkError
 
-cp "data.tgz" "$PLUGINS_DIR/data.tgz"
+COPYFILE_DISABLE=1 tar -czf "$OUTPUT_DIR/data.tgz" -C "$OUTPUT_DIR" "plugin_$TARGET_NAME.$OUTPUT_SUFFIX"
+checkError
+
+cp "$OUTPUT_DIR/data.tgz" "$PLUGINS_DIR/data.tgz"
+checkError
+echo "Installed $PLUGINS_DIR/data.tgz"

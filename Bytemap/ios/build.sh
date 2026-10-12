@@ -42,16 +42,22 @@ echo "OUTPUT_DIR: $OUTPUT_DIR"
 xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG clean
 checkError
 
-# iOS
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG -sdk iphoneos
+# iOS (Flick: device only, arm64, iOS 15 to match Solar2D; no simulator slice, as device and
+# simulator are both arm64 now and can't be lipo'd together, and we never use the iOS simulator)
+xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO IPHONEOS_DEPLOYMENT_TARGET=15.0 SYMROOT="$path/build"
 checkError
 
-# iOS-sim
-xcodebuild -project "$path/Plugin.xcodeproj" -configuration $CONFIG -sdk iphonesimulator
-checkError
-
-# create universal binary
-lipo -create "$path"/build/$CONFIG-iphoneos/lib$TARGET_NAME.$OUTPUT_SUFFIX "$path"/build/$CONFIG-iphonesimulator/lib$TARGET_NAME.$OUTPUT_SUFFIX -output "$OUTPUT_DIR"/lib$TARGET_NAME.$OUTPUT_SUFFIX
+cp "$path"/build/$CONFIG-iphoneos/lib$TARGET_NAME.$OUTPUT_SUFFIX "$OUTPUT_DIR"/lib$TARGET_NAME.$OUTPUT_SUFFIX
 checkError
 
 echo "$OUTPUT_DIR"/lib$TARGET_NAME.$OUTPUT_SUFFIX
+
+# Flick: package with metadata.lua (same as the published v9 package) and install as games.flick
+PLUGINS_DIR=~/Solar2DPlugins/games.flick/plugin.Bytemap/iphone
+mkdir -p "$PLUGINS_DIR"
+cp "$path/metadata.lua" "$OUTPUT_DIR/metadata.lua"
+COPYFILE_DISABLE=1 tar -czf "$OUTPUT_DIR/data.tgz" -C "$OUTPUT_DIR" lib$TARGET_NAME.$OUTPUT_SUFFIX metadata.lua
+checkError
+cp "$OUTPUT_DIR/data.tgz" "$PLUGINS_DIR/data.tgz"
+checkError
+echo "Installed $PLUGINS_DIR/data.tgz"

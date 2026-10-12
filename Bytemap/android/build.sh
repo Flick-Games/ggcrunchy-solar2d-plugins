@@ -107,3 +107,9 @@ echo $path/jniLibs/armeabi-v7a/libplugin.$TARGET_NAME.so
 echo Packing binaries...
 tar -czvf data.tgz -C $path jniLibs metadata.lua -C $path/jniLibs/armeabi-v7a libplugin.$TARGET_NAME.so
 echo $path/data.tgz.
+
+# Flick: install as games.flick
+PLUGINS_DIR="$HOME/Solar2DPlugins/games.flick/plugin.$TARGET_NAME/android"
+mkdir -p "$PLUGINS_DIR"
+cp "$path/data.tgz" "$PLUGINS_DIR/data.tgz"
+echo "Installed $PLUGINS_DIR/data.tgz"
