@@ -113,3 +113,14 @@ PLUGINS_DIR="$HOME/Solar2DPlugins/games.flick/plugin.$TARGET_NAME/android"
 mkdir -p "$PLUGINS_DIR"
 cp "$path/data.tgz" "$PLUGINS_DIR/data.tgz"
 echo "Installed $PLUGINS_DIR/data.tgz"
+
+# Flick: keep the unstripped libraries (obj/ is wiped by the next clean build) for the
+# Play native debug symbols upload in aosBuild.sh, which matches them to the AAB by build ID
+SYMBOLS_DIR="$HOME/Builds/symbols/plugins/plugin.$TARGET_NAME"
+rm -rf "$SYMBOLS_DIR"
+for so in "$path"/obj/local/*/libplugin.$TARGET_NAME.so; do
+	abi=$(basename "$(dirname "$so")")
+	mkdir -p "$SYMBOLS_DIR/$abi"
+	cp "$so" "$SYMBOLS_DIR/$abi/"
+done
+echo "Saved debug symbols to $SYMBOLS_DIR"
