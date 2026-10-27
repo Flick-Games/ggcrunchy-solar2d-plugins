@@ -166,9 +166,6 @@ int Bytemap_SetBytes (lua_State * L)
 
 	if (bmap)
 	{
-		// Reloadable: the edit must survive the next upload, so keep the pixels from now on.
-		bmap->DropSource();
-
 		// If a blob is present, flatten it into normal memory (detaching it). Skip this step
 		// when the temporary flag is set, in which case the blob is passed in as the bytes. 
 		if (bmap->mBlobRef != LUA_NOREF && !bmap->mTemp && !bmap->Flatten(true)) return LuaXS::ErrorAfterNil(L);// bmap, bytes, ...[, error]
@@ -199,6 +196,10 @@ int Bytemap_SetBytes (lua_State * L)
 
 				if (opts.mWidth != 0)
 				{
+					// Reloadable: the edit must survive the next upload, so keep the pixels from now on. This
+					// waits until the call is known to be valid and to write something.
+					bmap->DropSource();
+
 					// If the component counts match, we only care what region we want from
 					// the bytemap. This is easy when the full rect is requested: blast all
 					// bytes into it.

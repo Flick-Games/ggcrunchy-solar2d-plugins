@@ -24,6 +24,7 @@
 #include "CoronaAssert.h"
 #include "CoronaGraphics.h"
 #include "CoronaLua.h"
+#include "CoronaLog.h"
 #include "ByteReader.h"
 #include "Bytemap.h"
 #include "Bytes.h"
@@ -142,8 +143,9 @@ void Bytemap::InitializeBytes (std::vector<unsigned char> * bytes)
 	else mBytes.swap(*bytes);
 }
 
-// Number of times reloadable bytemaps have decoded their source again (see Reload())
+// Number of times reloadable bytemaps have decoded their source again (see Reload()), and how many of those failed
 static unsigned int sReloadCount = 0U;
+static unsigned int sReloadFailCount = 0U;
 
 void Bytemap::FreeBytes (std::vector<unsigned char> & bytes)
 {
@@ -155,10 +157,17 @@ bool Bytemap::Reload (void)
 {
 	int w = 0, h = 0, comp = 0;
 	unsigned char * uc = stbi_load_from_memory(mSource.data(), int(mSource.size()), &w, &h, &comp, 4);
+	bool bOK = uc && w == mW && h == mH;
+
+	// The caller falls back to transparent pixels, so make the failure visible (e.g. out of memory on resume)
+	if (!bOK)
+	{
+		++sReloadFailCount;
+
+		CORONA_LOG_ERROR("Bytemap: could not decode a reloadable texture again (%s); it will draw transparent", uc ? "size changed" : stbi_failure_reason());
+	}
 
 	if (!uc) return false;
-
-	bool bOK = w == mW && h == mH;
 
 	if (bOK)
 	{
@@ -790,8 +799,9 @@ CORONA_EXPORT int luaopen_plugin_Bytemap (lua_State * L)
 	lua_setfield(L, -2, "loadTexture");	// bytemap = { newTexture, addLoader, loadTexture = loadTexture }
 	lua_pushcfunction(L, [](lua_State * L) {
 		lua_pushinteger(L, lua_Integer(sReloadCount));	// count
+		lua_pushinteger(L, lua_Integer(sReloadFailCount));	// count, failures
 
-		return 1;
+		return 2;
 	});	// bytemap, getReloadCount
 	lua_setfield(L, -2, "getReloadCount");	// bytemap = { newTexture, addLoader, loadTexture, getReloadCount = getReloadCount }
 

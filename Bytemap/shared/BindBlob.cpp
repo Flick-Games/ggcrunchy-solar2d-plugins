@@ -33,8 +33,9 @@ int Bytemap_BindBlob (lua_State * L)
 
 	if (bmap)
 	{
-		// A bound blob replaces a reloadable source (no need to decode pixels it would discard)
-		bmap->DropSource(!BlobXS::IsBlob(L, 2));
+		// A bound blob replaces a reloadable source (no need to decode pixels it would discard). Without a blob
+		// there is nothing to do for a reloadable bytemap, since binding a blob earlier would have dropped its source.
+		if (BlobXS::IsBlob(L, 2)) bmap->DropSource(false);
 
 		int old_ref = bmap->mBlobRef;
 
@@ -82,10 +83,9 @@ int Bytemap_Deallocate (lua_State * L)
 
 	if (bmap && bmap->HasSource())
 	{
-		// Reloadable: free any pixels still held; the next upload decodes the source again
-		Bytemap::FreeBytes(bmap->mBytes);
-
-		bmap->mTemp = false;
+		// Reloadable: pixels are only held around an upload, and ResolveMemory() frees them after it. Pixels
+		// still waiting for their first upload (mTemp) are kept, or they would just be decoded again at first draw.
+		if (!bmap->mTemp) Bytemap::FreeBytes(bmap->mBytes);
 
 		return LuaXS::PushArgAndReturn(L, LuaXS::Nil{});// bmap, nil
 	}
